@@ -8,13 +8,13 @@ A tiny CLI utility that deletes Sony RAW files (`.ARW`) in a given directory tha
 - Scans the specified directory for all regular files; add `--recursive` to also process subdirectories.
 - Identifies `.ARW` and `.JPG` files case‑insensitively.
 - Collects the base names (e.g. `DSC01234` from `DSC01234.ARW`).
-- Deletes every `.ARW` for which there is no `.JPG` with the same base name (case‑insensitive match).
+- Deletes every `.ARW` for which there is no `.JPG` with the same base name (case‑insensitive match) in the same directory.
 - Prints progress: counts found, how many will be deleted, and any deletion errors.
 
 Notes:
 - Matching is purely by file name (without extension) – no metadata inspection.
 - Only the specified directory is processed by default; use `--recursive` to include subfolders.
-- In recursive mode, the basename match is path‑insensitive: a `.JPG` in any subfolder can keep an `.ARW` with the same basename in another subfolder.
+- In recursive mode, JPG/RAW matching is performed per directory: only a `.JPG` in the same directory protects a `.ARW` there.
 - Both the file extensions and the base‑name comparison are case‑insensitive.
 - Recursive scans can take longer on large directory trees.
 
@@ -65,11 +65,11 @@ gradlew.bat build
 ```
 Resulting file (default naming by Gradle/Kotlin plugin):
 ```
-build\libs\arw_cleaup-1.0-SNAPSHOT.jar
+build\libs\arw_cleanup-1.0-SNAPSHOT.jar
 ```
 Run it:
 ```bat
-java -jar build\libs\arw_cleaup-1.0-SNAPSHOT.jar "C:\Path\To\Your\Images"
+java -jar build\libs\arw_cleanup-1.0-SNAPSHOT.jar "C:\Path\To\Your\Images"
 ```
 
 ### 2) Native Executable (GraalVM Native Image)
@@ -106,6 +106,21 @@ Run it:
 build\native\nativeCompile\arw_cleanup.exe "C:\Path\To\Your\Images"
 ```
 
+
+## Planned / Proposed Features (Not Implemented Yet)
+The following feature ideas are planned or considered for future versions:
+- Exclude / Include patterns: `--exclude "*.hdr"` (and potential `--include <pattern>`) to fine-tune which files are considered.
+- Report output: `--report report.json` to generate a JSON or CSV summary of actions (e.g. `--report report.csv`).
+- Extended statistics / progress display: `--stats` for a final structured summary (scan time, deleted counts, per-directory breakdown).
+- File logging: `--log arw_cleanup.log` to persist the output to a log file in addition to console.
+- Parallel processing: `--parallel` to speed up very large directory trees (careful with I/O contention).
+- Interactive confirmation: `--interactive` prompts before deleting each file (or per batch).
+- Configuration file: automatic loading of defaults from `.arwcleanup.yml` in the working directory or user home.
+- Quarantine mode: `--quarantine <path>` moves unmatched RAW files into a quarantine folder instead of deleting.
+- Quiet / Verbose modes: `--quiet` suppresses non-essential output; `--verbose` adds extra diagnostic details.
+- Support for additional RAW formats besides `.ARW`: e.g. `.CR2`, `.NEF`, `.RW2`, `.ORF`, `.DNG` (matching logic extended accordingly).
+
+(If you need one of these sooner, contributions or issue requests are welcome.)
 
 ## Troubleshooting
 | Symptom | Cause | Fix |
