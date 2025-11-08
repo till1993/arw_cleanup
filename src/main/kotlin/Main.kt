@@ -11,20 +11,20 @@ fun main(args: Array<String>) {
         println("___________________________________________")
         println("ARW Cleanup Tool")
         println("___________________________________________")
-        println("Usage: arw_cleanup [--dry-run|-n] [--recursive|-r] [--quarantine|-q] <image_directory_path>")
-        println("This tool deletes or quarantines ARW files in the specified directory (optionally recursively) that do not have a corresponding JPG file.")
+        println("Usage: arw_cleanup [--dry-run|-n] [--recursive|-r] [--delete|-d] <image_directory_path>")
+        println("This tool quarantines (or deletes, if requested) ARW files in the specified directory (optionally recursively) that do not have a corresponding JPG file.")
         println("Matching is case-insensitive. Quote the path if it contains spaces.")
         println()
         println("Options:")
         println("  --dry-run, -n    Show which files would be deleted without actually deleting them")
         println("  --recursive, -r  Process subdirectories recursively")
-        println("  --quarantine, -q Move unmatched ARW files into a _arw_quarantine folder inside the target directory")
+        println("  --delete, -d     Delete unmatched ARW files instead of moving them into _arw_quarantine")
         println("  --help, -h       Show this help message")
         println()
         println("Examples:")
         println("  arw_cleanup \"C:\\Users\\User\\Pictures\\My Images\"")
         println("  arw_cleanup --dry-run --recursive \"D:\\Photos\\2025\"")
-        println("  arw_cleanup --quarantine \"D:\\Photos\\2025\"")
+        println("  arw_cleanup --delete \"D:\\Photos\\2025\"")
         println("___________________________________________")
     }
 
@@ -34,13 +34,13 @@ fun main(args: Array<String>) {
 
     val dryRun = args.any { it.equals("--dry-run", ignoreCase = true) || it == "-n" }
     val recursive = args.any { it.equals("--recursive", ignoreCase = true) || it == "-r" }
-    val quarantineMode = args.any { it.equals("--quarantine", ignoreCase = true) || it == "-q" }
+    val deleteMode = args.any { it.equals("--delete", ignoreCase = true) || it == "-d" }
 
-    // Positional args: remove flags (no args after --quarantine)
+    // Positional args: remove flags
     val positional = args.filterNot {
         it.equals("--dry-run", true) || it == "-n" ||
             it.equals("--recursive", true) || it == "-r" ||
-            it.equals("--quarantine", true) || it == "-q"
+            it.equals("--delete", true) || it == "-d"
     }
     if (positional.size != 1) {
         printHelp(); return@main
@@ -60,13 +60,10 @@ fun main(args: Array<String>) {
         return@main
     }
 
-    val quarantineDir = if (quarantineMode) {
-        imageDir.resolve(DEFAULT_QUARANTINE_FOLDER).normalize()
-    } else {
-        null
-    }
+    val quarantineDir = imageDir.resolve(DEFAULT_QUARANTINE_FOLDER).normalize()
+    val useQuarantine = !deleteMode
 
-    if (quarantineDir != null && !dryRun) {
+    if (useQuarantine && !dryRun) {
         try {
             quarantineDir.createDirectories()
         } catch (e: Exception) {
@@ -78,15 +75,19 @@ fun main(args: Array<String>) {
     println("Using image directory: $imageDir")
     if (dryRun) println("Dry run enabled: no files will be deleted or moved.")
     if (recursive) println("Recursive mode enabled: processing subdirectories.")
-    quarantineDir?.let {
-        println("Quarantine mode enabled: unmatched ARW files will move to ${it.toAbsolutePath()}.")
+    if (useQuarantine) {
+        println("Quarantine mode enabled (default): unmatched ARW files will move to ${quarantineDir.toAbsolutePath()}.")
+    } else {
+        println("Delete mode enabled: unmatched ARW files will be permanently removed.")
     }
 
     val allFiles = if (recursive) {
         imageDir.walk().filter { it.isRegularFile() }.toList()
     } else {
         imageDir.listDirectoryEntries().filter { it.isRegularFile() }
-    }.filterNot { quarantineDir != null && it.normalize().startsWith(quarantineDir) }
+    }.filterNot {
+        it.normalize().startsWith(quarantineDir)
+    }
 
     println("Scanned ${allFiles.size} regular file(s)${if (recursive) " (recursive)" else ""}.")
 
@@ -116,7 +117,7 @@ fun main(args: Array<String>) {
 
         for (file in arwFilesToDelete) {
             if (dryRun) {
-                if (quarantineDir != null) {
+                if (useQuarantine) {
                     val target = determineQuarantineTarget(quarantineDir, imageDir, file)
                     println("Would move to quarantine: ${file.toAbsolutePath()} -> ${target.toAbsolutePath()}")
                 } else {
@@ -124,7 +125,7 @@ fun main(args: Array<String>) {
                 }
                 continue
             }
-            if (quarantineDir != null) {
+            if (useQuarantine) {
                 try {
                     val targetPath = moveToQuarantine(quarantineDir, imageDir, file)
                     movedToQuarantine++
@@ -150,10 +151,10 @@ fun main(args: Array<String>) {
 
     println("Found $totalArw ARW file(s) (case-insensitive) across ${filesByDir.size} directory(ies).")
     println("Found $totalJpg JPG file(s) (case-insensitive) across ${filesByDir.size} directory(ies).")
-    val action = if (quarantineDir != null) "quarantine" else "delete"
+    val action = if (useQuarantine) "quarantine" else "delete"
     println("Found $totalToDelete ARW file(s) to ${if (dryRun) "potentially $action" else action} (no matching JPG in same directory).")
     if (!dryRun) {
-        if (quarantineDir != null) {
+        if (useQuarantine) {
             println("Moved $movedToQuarantine file(s) into ${quarantineDir.toAbsolutePath()}.")
         } else {
             println("Deleted $deletedCount file(s).")
