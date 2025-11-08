@@ -20,3 +20,10 @@ data class CleanupStats(
     var deleted: Int = 0,
     var quarantined: Int = 0
 )
+
+data class SummaryContext(
+    val directoryCount: Int,
+    val stats: CleanupStats,
+    val config: CleanupConfig,
+    val quarantineDir: Path
+)

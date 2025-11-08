@@ -9,7 +9,8 @@ import kotlin.io.path.relativeTo
 
 class CleanupRunner(
     private val console: Console,
-    private val fileSystem: FileSystem = LocalFileSystem
+    private val fileSystem: FileSystem = LocalFileSystem,
+    private val reporter: CleanupReporter = ConsoleCleanupReporter(console)
 ) {
 
     fun run(config: CleanupConfig) {
@@ -18,10 +19,10 @@ class CleanupRunner(
             if (!ensureQuarantineExists(quarantineDir)) return
         }
 
-        announceRun(config, quarantineDir)
+        reporter.publish(CleanupEvent.RunStarted(config, quarantineDir))
 
         val files = collectFiles(config, quarantineDir)
-        console.info("Scanned ${files.size} regular file(s)${if (config.recursive) " (recursive)" else ""}.")
+        reporter.publish(CleanupEvent.ScanCompleted(files.size, config.recursive))
 
         val stats = CleanupStats()
         val filesByDir = files.groupBy { it.parent ?: config.imageDir }
@@ -29,31 +30,29 @@ class CleanupRunner(
             processDirectory(dir, dirFiles, config, quarantineDir, stats)
         }
 
-        summarize(filesByDir.size, stats, config, quarantineDir)
+        reporter.publish(
+            CleanupEvent.Summary(
+                SummaryContext(
+                    directoryCount = filesByDir.size,
+                    stats = stats,
+                    config = config,
+                    quarantineDir = quarantineDir
+                )
+            )
+        )
     }
 
     private fun ensureQuarantineExists(quarantineDir: Path): Boolean =
         runCatching { fileSystem.createDirectories(quarantineDir); true }
             .getOrElse { error ->
-                console.error(
-                    "Unable to create quarantine directory (${quarantineDir.toAbsolutePath()}): ${error.message}"
+                reporter.publish(
+                    CleanupEvent.QuarantineCreationFailed(
+                        quarantineDir,
+                        error.message ?: error::class.simpleName ?: "Unknown error"
+                    )
                 )
                 false
             }
-
-    private fun announceRun(config: CleanupConfig, quarantineDir: Path) {
-        console.info("Using image directory: ${config.imageDir}")
-        if (config.dryRun) console.info("Dry run enabled: no files will be deleted or moved.")
-        if (config.recursive) console.info("Recursive mode enabled: processing subdirectories.")
-        when (config.mode) {
-            HandlingMode.QUARANTINE ->
-                console.info(
-                    "Quarantine mode (default): unmatched ARW files move to ${quarantineDir.toAbsolutePath()}."
-                )
-            HandlingMode.DELETE ->
-                console.info("Delete mode: unmatched ARW files will be permanently removed.")
-        }
-    }
 
     private fun collectFiles(config: CleanupConfig, quarantineDir: Path): List<Path> {
         val filesSeq = if (config.recursive) {
@@ -84,9 +83,13 @@ class CleanupRunner(
         val unmatched = arwFiles.filterNot { it.nameWithoutExtension.lowercase() in keepBaseNames }
         stats.totalUnmatched += unmatched.size
 
-        console.info(
-            "Directory: ${dir.toAbsolutePath()} => ARW: ${arwFiles.size}, " +
-                "JPG: ${jpgFiles.size}, to handle: ${unmatched.size}"
+        reporter.publish(
+            CleanupEvent.DirectoryStats(
+                directory = dir,
+                arwCount = arwFiles.size,
+                jpgCount = jpgFiles.size,
+                unmatchedCount = unmatched.size
+            )
         )
 
         unmatched.forEach { handleFile(it, config, quarantineDir, stats) }
@@ -102,11 +105,10 @@ class CleanupRunner(
             when (config.mode) {
                 HandlingMode.QUARANTINE -> {
                     val target = determineQuarantineTarget(quarantineDir, config.imageDir, file)
-                    console.info("Would move to quarantine: ${file.toAbsolutePath()} -> ${target.toAbsolutePath()}")
+                    reporter.publish(CleanupEvent.DryRunMove(file, target))
                 }
-
                 HandlingMode.DELETE ->
-                    console.info("Would delete: ${file.toAbsolutePath()}")
+                    reporter.publish(CleanupEvent.DryRunDelete(file))
             }
             return
         }
@@ -129,9 +131,14 @@ class CleanupRunner(
         try {
             val targetPath = moveToQuarantine(quarantineDir, config.imageDir, file)
             stats.quarantined++
-            console.info("Moved to quarantine: ${file.toAbsolutePath()} -> ${targetPath.toAbsolutePath()}")
+            reporter.publish(CleanupEvent.MoveSucceeded(file, targetPath))
         } catch (e: Exception) {
-            console.error("Failed to move to quarantine: ${file.toAbsolutePath()}, reason: ${e.message}")
+            reporter.publish(
+                CleanupEvent.MoveFailed(
+                    file,
+                    e.message ?: e::class.simpleName ?: "Unknown error"
+                )
+            )
         }
     }
 
@@ -140,42 +147,17 @@ class CleanupRunner(
             val deleted = fileSystem.deleteIfExists(file)
             if (deleted) {
                 stats.deleted++
-                console.info("Deleted: ${file.toAbsolutePath()}")
+                reporter.publish(CleanupEvent.DeleteSucceeded(file))
             } else {
-                console.warn("Failed to delete: ${file.toAbsolutePath()} (file not found)")
+                reporter.publish(CleanupEvent.DeleteSkippedMissing(file))
             }
         } catch (e: Exception) {
-            console.error("Failed to delete: ${file.toAbsolutePath()}, reason: ${e.message}")
-        }
-    }
-
-    private fun summarize(
-        directoryCount: Int,
-        stats: CleanupStats,
-        config: CleanupConfig,
-        quarantineDir: Path
-    ) {
-        console.info(
-            "Found ${stats.totalArw} ARW file(s) (case-insensitive) across $directoryCount directory(ies)."
-        )
-        console.info(
-            "Found ${stats.totalJpg} JPG file(s) (case-insensitive) across $directoryCount directory(ies)."
-        )
-
-        val verb = if (config.mode == HandlingMode.QUARANTINE) "quarantine" else "delete"
-        val action = if (config.dryRun) "potentially $verb" else verb
-        console.info(
-            "Found ${stats.totalUnmatched} ARW file(s) to $action (no matching JPG in same directory)."
-        )
-
-        if (!config.dryRun) {
-            when (config.mode) {
-                HandlingMode.QUARANTINE ->
-                    console.info("Moved ${stats.quarantined} file(s) into ${quarantineDir.toAbsolutePath()}.")
-
-                HandlingMode.DELETE ->
-                    console.info("Deleted ${stats.deleted} file(s).")
-            }
+            reporter.publish(
+                CleanupEvent.DeleteFailed(
+                    file,
+                    e.message ?: e::class.simpleName ?: "Unknown error"
+                )
+            )
         }
     }
 
