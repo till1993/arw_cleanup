@@ -1,6 +1,6 @@
 # ARW Cleanup
 
-A tiny CLI utility that deletes Sony RAW files (`.ARW`) in a given directory that do not have a matching JPEG file (`.JPG`) with the same base name. Helpful when you shoot RAW+JPG but want to keep only the JPGs you actually selected/kept.
+A tiny CLI utility that quarantines (or deletes, if you really want) Sony RAW files (`.ARW`) in a given directory that do not have a matching JPEG file (`.JPG`) with the same base name. Helpful when you shoot RAW+JPG but want to keep only the JPGs you actually selected/kept.
 
 
 ## What It Does
@@ -8,15 +8,16 @@ A tiny CLI utility that deletes Sony RAW files (`.ARW`) in a given directory tha
 - Scans the specified directory for all regular files; add `--recursive` to also process subdirectories.
 - Identifies `.ARW` and `.JPG` files case‑insensitively.
 - Collects the base names (e.g. `DSC01234` from `DSC01234.ARW`).
-- Deletes every `.ARW` for which there is no `.JPG` with the same base name (case‑insensitive match) in the same directory.
+- Moves every unmatched `.ARW` into the auto-created `_arw_quarantine` folder (default) or deletes it if you opt in with `--delete`.
 - Prints progress: counts found, how many will be deleted, and any deletion errors.
 
 Notes:
-- Matching is purely by file name (without extension) – no metadata inspection.
+- Matching is purely by file name (without extension) — no metadata inspection.
 - Only the specified directory is processed by default; use `--recursive` to include subfolders.
 - In recursive mode, JPG/RAW matching is performed per directory: only a `.JPG` in the same directory protects a `.ARW` there.
-- Both the file extensions and the base‑name comparison are case‑insensitive.
+- Both the file extensions and the base-name comparison are case-insensitive.
 - Recursive scans can take longer on large directory trees.
+- `_arw_quarantine` sits at the root of the scanned directory and preserves relative folder names so you can restore files later.
 
 
 ## Safety First
@@ -36,6 +37,7 @@ Deletion is irreversible. Please:
 Options:
 - `--dry-run`, `-n`: Show which `.ARW` files would be deleted without actually deleting them.
 - `--recursive`, `-r`: Process subdirectories recursively.
+- `--delete`, `-d`: Permanently remove unmatched `.ARW` files instead of quarantining them (dangerous).
 - `--help`, `-h`: Show help message.
 
 Examples (Windows cmd):
@@ -47,6 +49,8 @@ Examples (Windows cmd):
   - `arw_cleanup --dry-run "D:\Photos\Session 01"`
 - Preview only (no deletion), recursively:
   - `arw_cleanup -n -r "D:\Photos\Session 01"`
+- Force deletion instead of quarantining:
+  - `arw_cleanup --delete "D:\Photos\Session 01"`
 
 If you run from the JAR (see below) you also pass the directory path as the single argument.
 If the argument count is wrong a short help banner is printed.
@@ -116,7 +120,6 @@ The following feature ideas are planned or considered for future versions:
 - Parallel processing: `--parallel` to speed up very large directory trees (careful with I/O contention).
 - Interactive confirmation: `--interactive` prompts before deleting each file (or per batch).
 - Configuration file: automatic loading of defaults from `.arwcleanup.yml` in the working directory or user home.
-- Quarantine mode: `--quarantine <path>` moves unmatched RAW files into a quarantine folder instead of deleting.
 - Quiet / Verbose modes: `--quiet` suppresses non-essential output; `--verbose` adds extra diagnostic details.
 - Support for additional RAW formats besides `.ARW`: e.g. `.CR2`, `.NEF`, `.RW2`, `.ORF`, `.DNG` (matching logic extended accordingly).
 
