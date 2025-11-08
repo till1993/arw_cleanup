@@ -2,10 +2,14 @@ package de.till1993.core
 
 import de.till1993.cli.Console
 import java.nio.file.Path
-import kotlin.io.path.*
+import kotlin.io.path.extension
+import kotlin.io.path.name
+import kotlin.io.path.nameWithoutExtension
+import kotlin.io.path.relativeTo
 
 class CleanupRunner(
-    private val console: Console
+    private val console: Console,
+    private val fileSystem: FileSystem = LocalFileSystem
 ) {
 
     fun run(config: CleanupConfig) {
@@ -29,7 +33,7 @@ class CleanupRunner(
     }
 
     private fun ensureQuarantineExists(quarantineDir: Path): Boolean =
-        runCatching { quarantineDir.createDirectories(); true }
+        runCatching { fileSystem.createDirectories(quarantineDir); true }
             .getOrElse { error ->
                 console.error(
                     "Unable to create quarantine directory (${quarantineDir.toAbsolutePath()}): ${error.message}"
@@ -53,9 +57,9 @@ class CleanupRunner(
 
     private fun collectFiles(config: CleanupConfig, quarantineDir: Path): List<Path> {
         val filesSeq = if (config.recursive) {
-            config.imageDir.walk().filter { it.isRegularFile() }
+            fileSystem.walkRegularFiles(config.imageDir)
         } else {
-            config.imageDir.listDirectoryEntries().asSequence().filter { it.isRegularFile() }
+            fileSystem.listRegularFiles(config.imageDir)
         }
         return filesSeq
             .filterNot { it.normalize().startsWith(quarantineDir) }
@@ -133,7 +137,7 @@ class CleanupRunner(
 
     private fun deleteFile(file: Path, stats: CleanupStats) {
         try {
-            val deleted = file.deleteIfExists()
+            val deleted = fileSystem.deleteIfExists(file)
             if (deleted) {
                 stats.deleted++
                 console.info("Deleted: ${file.toAbsolutePath()}")
@@ -186,8 +190,8 @@ class CleanupRunner(
 
     private fun moveToQuarantine(quarantineDir: Path, imageDir: Path, file: Path): Path {
         val targetPath = determineQuarantineTarget(quarantineDir, imageDir, file).normalize()
-        targetPath.parent?.createDirectories()
-        file.moveTo(targetPath, overwrite = true)
+        targetPath.parent?.let { fileSystem.createDirectories(it) }
+        fileSystem.move(file, targetPath, overwrite = true)
         return targetPath
     }
 }
