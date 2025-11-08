@@ -11,18 +11,26 @@ class FakeFileSystem : FileSystem {
 
     private val directoryContents = mutableMapOf<Path, List<Path>>()
     private val moveFailures = mutableMapOf<Path, Throwable>()
+    private val directories = mutableSetOf<Path>()
+    private val regularFiles = mutableSetOf<Path>()
 
-    fun stubDirectory(dir: Path, vararg files: Path): FakeFileSystem = apply {
-        directoryContents[dir] = files.toList()
+    fun stubDirectory(dir: Path, vararg entries: Path): FakeFileSystem = apply {
+        directoryContents[dir] = entries.toList()
+        directories.add(dir)
+        entries.forEach { file ->
+            regularFiles.add(file)
+            file.parent?.let { directories.add(it) }
+        }
     }
 
-    fun failMoveFor(vararg files: Path, throwable: Throwable = IllegalStateException("move failed")): FakeFileSystem =
+    fun failMoveFor(vararg paths: Path, throwable: Throwable = IllegalStateException("move failed")): FakeFileSystem =
         apply {
-            files.forEach { moveFailures[it] = throwable }
+            paths.forEach { moveFailures[it] = throwable }
         }
 
     override fun createDirectories(path: Path) {
         createdDirs.add(path)
+        directories.add(path)
     }
 
     override fun listRegularFiles(path: Path): Sequence<Path> =
@@ -36,12 +44,22 @@ class FakeFileSystem : FileSystem {
 
     override fun deleteIfExists(path: Path): Boolean {
         deleted.add(path)
+        regularFiles.remove(path)
         return deleteResults[path] ?: true
     }
 
     override fun move(source: Path, target: Path, overwrite: Boolean) {
         val failure = moveFailures[source]
         if (failure != null) throw failure
+        regularFiles.remove(source)
+        target.parent?.let { directories.add(it) }
+        regularFiles.add(target)
         moved.add(source to target)
     }
+
+    override fun exists(path: Path): Boolean =
+        path in directories || path in regularFiles
+
+    override fun isDirectory(path: Path): Boolean =
+        path in directories
 }

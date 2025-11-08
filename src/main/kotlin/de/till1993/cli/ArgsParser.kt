@@ -1,15 +1,16 @@
 package de.till1993.cli
 
 import de.till1993.core.CleanupConfig
+import de.till1993.core.FileSystem
 import de.till1993.core.HandlingMode
+import de.till1993.core.LocalFileSystem
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import kotlin.io.path.Path
-import kotlin.io.path.exists
-import kotlin.io.path.isDirectory
 
 internal class ArgsParser(
     private val console: Console,
+    private val fileSystem: FileSystem = LocalFileSystem,
     private val flags: List<CliFlag> = DEFAULT_FLAGS
 ) {
     private val helpPrinter = HelpPrinter(console, flags)
@@ -64,7 +65,7 @@ internal class ArgsParser(
             }
         }.normalize()
 
-        if (!imageDir.exists() || !imageDir.isDirectory()) {
+        if (!fileSystem.exists(imageDir) || !fileSystem.isDirectory(imageDir)) {
             console.error("Provided path is not an existing directory: $imageDir")
             return null
         }
