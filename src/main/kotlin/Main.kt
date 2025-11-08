@@ -42,7 +42,7 @@ fun main(args: Array<String>) {
         try {
             Path(it)
         } catch (e: InvalidPathException) {
-            println("Invalid path: $it, reason: ${e.message}");
+            println("Invalid path: $it, reason: ${e.message}")
             printHelp(); return@main
         }
     }
@@ -60,37 +60,49 @@ fun main(args: Array<String>) {
 
     println("Scanned ${allFiles.size} regular file(s)${if (recursive) " (recursive)" else ""}.")
 
-    val arwFiles = allFiles.filter { it.extension.equals("arw", ignoreCase = true) }
-    println("Found ${arwFiles.size} ARW file(s) (case-insensitive).")
-    val jpgFiles = allFiles.filter { it.extension.equals("jpg", ignoreCase = true) }
-    println("Found ${jpgFiles.size} JPG file(s) (case-insensitive).")
+    val filesByDir = allFiles.groupBy { it.parent }
 
-    val keepBaseNames = jpgFiles.map { it.nameWithoutExtension.lowercase() }.toSet()
-    val arwFilesToDelete = arwFiles.filterNot { it.nameWithoutExtension.lowercase() in keepBaseNames }
-    println("Found ${arwFilesToDelete.size} ARW file(s) to ${if (dryRun) "potentially delete" else "delete"} (no matching JPG).")
-
+    var totalArw = 0
+    var totalJpg = 0
+    var totalToDelete = 0
     var deletedCount = 0
-    for (file in arwFilesToDelete) {
-        if (dryRun) {
-            println("Would delete: ${file.name}")
-            continue
-        }
-        try {
-            val deleted = file.toFile().delete()
-            if (deleted) {
-                deletedCount++
-                println("Deleted: ${file.name}")
-            } else {
-                println("Failed to delete: ${file.name} (delete() returned false)")
+
+    for ((dir, files) in filesByDir) {
+        val arwFiles = files.filter { it.extension.equals("arw", ignoreCase = true) }
+        val jpgFiles = files.filter { it.extension.equals("jpg", ignoreCase = true) }
+
+        if (arwFiles.isEmpty() && jpgFiles.isEmpty()) continue
+
+        totalArw += arwFiles.size
+        totalJpg += jpgFiles.size
+
+        val keepBaseNames = jpgFiles.map { it.nameWithoutExtension.lowercase() }.toSet()
+        val arwFilesToDelete = arwFiles.filterNot { it.nameWithoutExtension.lowercase() in keepBaseNames }
+
+        totalToDelete += arwFilesToDelete.size
+
+        println("Directory: ${dir.toAbsolutePath()} => ARW: ${arwFiles.size}, JPG: ${jpgFiles.size}, to delete: ${arwFilesToDelete.size}")
+
+        for (file in arwFilesToDelete) {
+            if (dryRun) {
+                println("Would delete: ${file.toAbsolutePath()}")
+                continue
             }
-        } catch (e: Exception) {
-            println("Failed to delete: ${file.name}, reason: ${e.message}")
+            try {
+                val deleted = file.toFile().delete()
+                if (deleted) {
+                    deletedCount++
+                    println("Deleted: ${file.toAbsolutePath()}")
+                } else {
+                    println("Failed to delete: ${file.toAbsolutePath()} (delete() returned false)")
+                }
+            } catch (e: Exception) {
+                println("Failed to delete: ${file.toAbsolutePath()}, reason: ${e.message}")
+            }
         }
     }
 
-    if (dryRun) {
-        println("Dry run complete: ${arwFilesToDelete.size} ARW file(s) would be deleted.")
-    } else {
-        println("Cleanup complete: $deletedCount ARW file(s) deleted.")
-    }
+    println("Found $totalArw ARW file(s) (case-insensitive) across ${filesByDir.size} directory(ies).")
+    println("Found $totalJpg JPG file(s) (case-insensitive) across ${filesByDir.size} directory(ies).")
+    println("Found $totalToDelete ARW file(s) to ${if (dryRun) "potentially delete" else "delete"} (no matching JPG in same directory).")
 }
