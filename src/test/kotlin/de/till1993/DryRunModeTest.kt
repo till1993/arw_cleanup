@@ -11,11 +11,14 @@ class DryRunModeTest {
 
     @Test
     fun `dry run leaves filesystem untouched`(@TempDir tempDir: Path) {
+        // given
         val session = tempDir.subDir("dry-run")
         val lonelyArw = session.sampleFile("lonely.ARW")
 
+        // when
         runCleanup(session, "--dry-run")
 
+        // then
         assertTrue(lonelyArw.exists(), "Dry run must not delete or move files")
         assertFalse(
             session.quarantineDir().exists(),
@@ -25,11 +28,14 @@ class DryRunModeTest {
 
     @Test
     fun `short dry run flag also preserves files`(@TempDir tempDir: Path) {
+        // given
         val session = tempDir.subDir("dry-run-short")
         val lonelyArw = session.sampleFile("lonely.ARW")
 
+        // when
         runCleanup(session, "-n")
 
+        // then
         assertTrue(lonelyArw.exists(), "Short flag -n must not delete or move files")
         assertFalse(
             session.quarantineDir().exists(),

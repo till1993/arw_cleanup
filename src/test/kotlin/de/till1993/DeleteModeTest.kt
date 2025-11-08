@@ -10,11 +10,14 @@ class DeleteModeTest {
 
     @Test
     fun `delete mode removes unmatched RAW files`(@TempDir tempDir: Path) {
+        // given
         val session = tempDir.subDir("delete-mode")
         val lonelyArw = session.sampleFile("lonely.ARW")
 
+        // when
         runCleanup(session, "--delete")
 
+        // then
         assertFalse(lonelyArw.exists(), "Delete mode should remove unmatched RAW files")
         assertFalse(
             session.quarantineDir().exists(),
@@ -24,11 +27,14 @@ class DeleteModeTest {
 
     @Test
     fun `recursive delete removes nested RAW files without creating quarantine`(@TempDir tempDir: Path) {
+        // given
         val session = tempDir.subDir("delete-recursive")
         val nestedRaw = session.subDir("nested").sampleFile("nestedLonely.ARW")
 
+        // when
         runCleanup(session, "-d", "-r")
 
+        // then
         assertFalse(nestedRaw.exists(), "Recursive delete should remove nested unmatched RAW files")
         assertFalse(
             session.quarantineDir().exists(),
