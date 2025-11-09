@@ -9,10 +9,15 @@ class CliHelpTest {
 
     @Test
     fun `short help flag prints usage banner`() {
+        // given
+        val args = arrayOf("-h")
+
+        // when
         val output = captureStdout {
-            main(arrayOf("-h"))
+            main(args)
         }
 
+        // then
         assertTrue(
             output.contains("Usage: arw_cleanup"),
             "Help flag should display the usage banner"
@@ -21,10 +26,15 @@ class CliHelpTest {
 
     @Test
     fun `missing directory argument prints usage`() {
+        // given
+        val args = emptyArray<String>()
+
+        // when
         val output = captureStdout {
-            main(emptyArray())
+            main(args)
         }
 
+        // then
         assertTrue(
             output.contains("Usage: arw_cleanup"),
             "Missing required directory must show the usage instructions"
@@ -33,12 +43,16 @@ class CliHelpTest {
 
     @Test
     fun `nonexistent directory prints helpful error`(@TempDir tempDir: Path) {
+        // given
         val missingDir = tempDir.resolve("not-there")
+        val args = arrayOf(missingDir.toString())
 
+        // when
         val output = captureStdout {
-            main(arrayOf(missingDir.toString()))
+            main(args)
         }
 
+        // then
         assertTrue(
             output.contains("Provided path is not an existing directory"),
             "Users should see a clear error when the directory does not exist"
@@ -47,12 +61,16 @@ class CliHelpTest {
 
     @Test
     fun `unknown flag prints usage guidance`(@TempDir tempDir: Path) {
+        // given
         val existingDir = tempDir.subDir("existing")
+        val args = arrayOf("--unknown", existingDir.toString())
 
+        // when
         val output = captureStdout {
-            main(arrayOf("--unknown", existingDir.toString()))
+            main(args)
         }
 
+        // then
         assertTrue(
             output.contains("Usage: arw_cleanup"),
             "Unknown flags should route the user to the usage banner"

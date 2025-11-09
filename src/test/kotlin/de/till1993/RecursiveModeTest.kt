@@ -10,17 +10,36 @@ import kotlin.test.assertTrue
 class RecursiveModeTest {
 
     @Test
+    fun `non recursive run leaves nested files untouched`(@TempDir tempDir: Path) {
+        // given
+        val session = tempDir.subDir("non-recursive")
+        val nestedDir = session.subDir("nested")
+        val nestedLonely = nestedDir.sampleFile("nestedLonely.ARW")
+        val quarantined = session.quarantinedFile("nested/nestedLonely.ARW")
+
+        // when
+        runCleanup(session)
+
+        // then
+        assertTrue(nestedLonely.exists(), "Non-recursive run should leave nested files untouched")
+        assertFalse(
+            quarantined.exists(),
+            "Non-recursive run should not move nested files into quarantine"
+        )
+    }
+
+    @Test
     fun `recursive run processes nested directories`(@TempDir tempDir: Path) {
+        // given
         val session = tempDir.subDir("recursive")
         val nestedDir = session.subDir("nested")
         val nestedLonely = nestedDir.sampleFile("nestedLonely.ARW")
+        val quarantined = session.quarantinedFile("nested/nestedLonely.ARW")
 
-        runCleanup(session)
-        assertTrue(nestedLonely.exists(), "Non-recursive run should leave nested files untouched")
-
+        // when
         runCleanup(session, "--recursive")
 
-        val quarantined = session.quarantinedFile("nested/nestedLonely.ARW")
+        // then
         assertFalse(nestedLonely.exists(), "Recursive run should move nested unmatched RAW files")
         assertTrue(
             quarantined.exists(),
@@ -30,13 +49,16 @@ class RecursiveModeTest {
 
     @Test
     fun `jpg in parent directory does not protect nested raw`(@TempDir tempDir: Path) {
+        // given
         val session = tempDir.subDir("per-directory")
         session.sampleFile("shared.JPG")
         val childDir = session.subDir("child")
         val childRaw = childDir.sampleFile("shared.ARW")
 
+        // when
         runCleanup(session, "-r")
 
+        // then
         assertFalse(
             childRaw.exists(),
             "Matching must stay directory-local even when recursion is enabled"

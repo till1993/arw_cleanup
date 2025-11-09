@@ -30,12 +30,16 @@ internal fun Path.quarantinedFile(relativePath: String): Path = quarantineDir().
 
 internal fun captureStdout(block: () -> Unit): String {
     val originalOut = System.out
+    val originalErr = System.err
     val buffer = ByteArrayOutputStream()
-    System.setOut(PrintStream(buffer, true))
+    val tap = PrintStream(buffer, true)
+    System.setOut(tap)
+    System.setErr(tap)
     return try {
         block()
         buffer.toString(Charsets.UTF_8)
     } finally {
         System.setOut(originalOut)
+        System.setErr(originalErr)
     }
 }

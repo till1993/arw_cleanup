@@ -1,0 +1,109 @@
+package de.till1993
+
+import de.till1993.core.CleanupConfig
+import de.till1993.core.CleanupRunner
+import de.till1993.core.HandlingMode
+import org.junit.jupiter.api.Test
+import kotlin.io.path.Path as pathOf
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class CleanupRunnerTest {
+
+    @Test
+    fun `quarantine run requests move via filesystem`() {
+        // given
+        val imageDir = pathOf("C:/images/session")
+        val pairedRaw = imageDir.resolve("paired.ARW")
+        val pairedJpg = imageDir.resolve("paired.JPG")
+        val lonely = imageDir.resolve("lonely.ARW")
+
+        val fakeFs = FakeFileSystem()
+            .stubDirectory(imageDir, pairedRaw, pairedJpg, lonely)
+        val console = RecordingConsole()
+        val runner = CleanupRunner(console, fakeFs)
+
+        // when
+        runner.run(CleanupConfig(imageDir, recursive = false, dryRun = false, mode = HandlingMode.QUARANTINE))
+
+        // then
+        assertTrue(fakeFs.createdDirs.any { it.toString().endsWith("_arw_quarantine") })
+        val move = fakeFs.moved.single()
+        assertEquals(lonely, move.first)
+        assertTrue(move.second.toString().contains("_arw_quarantine"))
+        assertTrue(console.infoMessages.any { it.contains("Moved to quarantine") })
+    }
+
+    @Test
+    fun `dry run logs intended actions without filesystem writes`() {
+        // given
+        val imageDir = pathOf("C:/images/dry-run")
+        val lonely = imageDir.resolve("lonely.ARW")
+
+        val fakeFs = FakeFileSystem()
+            .stubDirectory(imageDir, lonely)
+        val console = RecordingConsole()
+        val runner = CleanupRunner(console, fakeFs)
+
+        // when
+        runner.run(CleanupConfig(imageDir, recursive = false, dryRun = true, mode = HandlingMode.QUARANTINE))
+
+        // then
+        assertTrue(
+            console.infoMessages.any { it.contains("Would move to quarantine") },
+            "Dry run should describe intended move"
+        )
+        assertTrue(fakeFs.moved.isEmpty(), "Dry run must not perform moves")
+        assertTrue(fakeFs.createdDirs.isEmpty(), "Dry run must not create directories")
+    }
+
+    @Test
+    fun `quarantine errors are reported without aborting other files`() {
+        // given
+        val imageDir = pathOf("C:/images/quarantine-error")
+        val first = imageDir.resolve("first.ARW")
+        val second = imageDir.resolve("second.ARW")
+
+        val fakeFs = FakeFileSystem()
+            .stubDirectory(imageDir, first, second)
+        val console = RecordingConsole()
+        val runner = CleanupRunner(console, fakeFs)
+
+        fakeFs.failMoveFor(first, throwable = IllegalStateException("disk full"))
+
+        // when
+        runner.run(CleanupConfig(imageDir, recursive = false, dryRun = false, mode = HandlingMode.QUARANTINE))
+
+        // then
+        assertTrue(
+            console.errorMessages.any { it.contains("disk full") },
+            "Errors should be reported"
+        )
+        assertTrue(
+            fakeFs.moved.any { it.first == second },
+            "Failure on first file should not prevent processing the second"
+        )
+    }
+
+    @Test
+    fun `recursive delete run deletes nested files without creating quarantine`() {
+        // given
+        val imageDir = pathOf("C:/images/session")
+        val nested = imageDir.resolve("nested").resolve("lonely.ARW")
+        val nestedJpg = imageDir.resolve("nested").resolve("paired.JPG")
+
+        val fakeFs = FakeFileSystem()
+            .stubDirectory(imageDir)
+            .stubDirectory(imageDir.resolve("nested"), nested, nestedJpg)
+        val console = RecordingConsole()
+        val runner = CleanupRunner(console, fakeFs)
+
+        // when
+        runner.run(CleanupConfig(imageDir, recursive = true, dryRun = false, mode = HandlingMode.DELETE))
+
+        // then
+        assertEquals(listOf(nested), fakeFs.deleted, "Nested unmatched RAW should be deleted")
+        assertTrue(fakeFs.createdDirs.isEmpty(), "Delete mode must not create quarantine directories")
+        assertTrue(console.infoMessages.any { it.contains("Deleted:") }, "Console should log deletions")
+    }
+}
